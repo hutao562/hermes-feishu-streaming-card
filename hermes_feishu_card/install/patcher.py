@@ -1014,19 +1014,20 @@ def _render_status_callback_hook_block(indent: str, newline: str):
     deeper_indent = _child_indent(inner_indent)
     return [
         f"{indent}{STATUS_CALLBACK_PATCH_BEGIN}{newline}",
-        f"{indent}if _run_still_current() and event_type == \"warn\":{newline}",
+        f"{indent}if _run_still_current() and event_type in (\"warn\", \"lifecycle\"):{newline}",
         f"{inner_indent}try:{newline}",
         (
             f"{deeper_indent}from hermes_feishu_card.hook_runtime "
             f"import emit_from_hermes_locals_threadsafe as _hfc_emit_threadsafe{newline}"
         ),
+        f"{deeper_indent}_hfc_evt = \"status.warning\" if event_type == \"warn\" else \"status.heartbeat\"{newline}",
         f"{deeper_indent}if _hfc_emit_threadsafe({{{newline}",
         f"{deeper_indent}    **locals(),{newline}",
         f"{deeper_indent}    \"source\": source,{newline}",
         f"{deeper_indent}    \"message_id\": event_message_id,{newline}",
         f"{deeper_indent}    \"_hfc_loop\": _loop_for_step,{newline}",
         f"{deeper_indent}    \"text\": message,{newline}",
-        f"{deeper_indent}}}, event_name=\"status.warning\"):{newline}",
+        f"{deeper_indent}}}, event_name=_hfc_evt):{newline}",
         f"{deeper_indent}    return{newline}",
         f"{inner_indent}except Exception:{newline}",
         f"{deeper_indent}pass{newline}",
@@ -1039,23 +1040,40 @@ def _render_notify_hook_block(indent: str, newline: str):
     deeper_indent = _child_indent(inner_indent)
     return [
         f"{indent}{NOTIFY_PATCH_BEGIN}{newline}",
-        f"{indent}try:{newline}",
+        f"{indent}if _run_still_current() and _NOTIFY_INTERVAL is not None:{newline}",
+        f"{inner_indent}try:{newline}",
         (
-            f"{inner_indent}from hermes_feishu_card.hook_runtime "
+            f"{deeper_indent}from hermes_feishu_card.hook_runtime "
             f"import emit_from_hermes_locals_threadsafe as _hfc_emit_threadsafe{newline}"
         ),
-        f"{inner_indent}if _run_still_current():{newline}",
-        f"{deeper_indent}_hfc_heartbeat_text = f\"⏳ Still working... ({{_elapsed_mins}} min elapsed{{_status_detail}})\"{newline}",
-        f"{deeper_indent}if _hfc_emit_threadsafe({{{newline}",
-        f"{deeper_indent}    **locals(),{newline}",
-        f"{deeper_indent}    \"source\": source,{newline}",
-        f"{deeper_indent}    \"message_id\": event_message_id,{newline}",
-        f"{deeper_indent}    \"_hfc_loop\": _loop_for_step,{newline}",
-        f"{deeper_indent}    \"text\": _hfc_heartbeat_text,{newline}",
-        f"{deeper_indent}}}, event_name=\"status.heartbeat\"):{newline}",
-        f"{deeper_indent}    return{newline}",
-        f"{indent}except Exception:{newline}",
-        f"{inner_indent}pass{newline}",
+        f"{deeper_indent}while True:{newline}",
+        f"{deeper_indent}    await asyncio.sleep(_NOTIFY_INTERVAL){newline}",
+        f"{deeper_indent}    if not _run_still_current():{newline}",
+        f"{deeper_indent}        break{newline}",
+        f"{deeper_indent}    _elapsed_mins = int((time.time() - _notify_start) // 60){newline}",
+        f"{deeper_indent}    _status_detail = \"\"{newline}",
+        f"{deeper_indent}    _agent_ref = agent_holder[0]{newline}",
+        f"{deeper_indent}    if _agent_ref and hasattr(_agent_ref, \"get_activity_summary\"):{newline}",
+        f"{deeper_indent}        try:{newline}",
+        f"{deeper_indent}            _a = _agent_ref.get_activity_summary(){newline}",
+        f"{deeper_indent}            _parts = [f\"iteration {{_a['api_call_count']}}/{{_a['max_iterations']}}\"]{newline}",
+        f"{deeper_indent}            if _a.get(\"current_tool\"):{newline}",
+        f"{deeper_indent}                _parts.append(f\"running: {{_a['current_tool']}}\"){newline}",
+        f"{deeper_indent}            else:{newline}",
+        f"{deeper_indent}                _parts.append(_a.get(\"last_activity_desc\", \"\")){newline}",
+        f"{deeper_indent}            _status_detail = \" — \" + \", \".join(_parts){newline}",
+        f"{deeper_indent}        except Exception:{newline}",
+        f"{deeper_indent}            pass{newline}",
+        f"{deeper_indent}    _hfc_heartbeat_text = f\"⏳ Still working... ({{_elapsed_mins}} min elapsed{{_status_detail}})\"{newline}",
+        f"{deeper_indent}    _hfc_emit_threadsafe({{{newline}",
+        f"{deeper_indent}        **locals(),{newline}",
+        f"{deeper_indent}        \"source\": source,{newline}",
+        f"{deeper_indent}        \"message_id\": event_message_id,{newline}",
+        f"{deeper_indent}        \"_hfc_loop\": _loop_for_step,{newline}",
+        f"{deeper_indent}        \"text\": _hfc_heartbeat_text,{newline}",
+        f"{deeper_indent}    }}, event_name=\"status.heartbeat\"){newline}",
+        f"{inner_indent}except Exception:{newline}",
+        f"{deeper_indent}pass{newline}",
         f"{indent}{NOTIFY_PATCH_END}{newline}",
     ]
 
