@@ -13,6 +13,10 @@ THINKING_DELTA_PATCH_BEGIN = "# HERMES_FEISHU_CARD_THINKING_DELTA_PATCH_BEGIN"
 THINKING_DELTA_PATCH_END = "# HERMES_FEISHU_CARD_THINKING_DELTA_PATCH_END"
 CRON_PATCH_BEGIN = "# HERMES_FEISHU_CARD_CRON_PATCH_BEGIN"
 CRON_PATCH_END = "# HERMES_FEISHU_CARD_CRON_PATCH_END"
+STATUS_CALLBACK_PATCH_BEGIN = "# HERMES_FEISHU_CARD_STATUS_CALLBACK_PATCH_BEGIN"
+STATUS_CALLBACK_PATCH_END = "# HERMES_FEISHU_CARD_STATUS_CALLBACK_PATCH_END"
+NOTIFY_PATCH_BEGIN = "# HERMES_FEISHU_CARD_NOTIFY_PATCH_BEGIN"
+NOTIFY_PATCH_END = "# HERMES_FEISHU_CARD_NOTIFY_PATCH_END"
 
 _HANDLER_NAME = "_handle_message_with_agent"
 _CRON_DELIVER_NAME = "_deliver_result"
@@ -56,7 +60,7 @@ def apply_patch(content: str, strategy: str = "legacy_gateway_run") -> str:
         ),
         required_callback_args=("text",),
     )
-    return _apply_callback_patch(
+    content = _apply_callback_patch(
         content,
         callback_name="_interim_assistant_cb",
         begin_marker=THINKING_DELTA_PATCH_BEGIN,
@@ -69,6 +73,34 @@ def apply_patch(content: str, strategy: str = "legacy_gateway_run") -> str:
             "_run_still_current",
         ),
         required_callback_args=("text", "already_streamed"),
+    )
+    content = _apply_callback_patch(
+        content,
+        callback_name="_status_callback_sync",
+        begin_marker=STATUS_CALLBACK_PATCH_BEGIN,
+        end_marker=STATUS_CALLBACK_PATCH_END,
+        renderer=_render_status_callback_hook_block,
+        required_outer_names=(
+            "source",
+            "event_message_id",
+            "_loop_for_step",
+            "_run_still_current",
+        ),
+        required_callback_args=("event_type", "message"),
+    )
+    return _apply_callback_patch(
+        content,
+        callback_name="_notify_long_running",
+        begin_marker=NOTIFY_PATCH_BEGIN,
+        end_marker=NOTIFY_PATCH_END,
+        renderer=_render_notify_hook_block,
+        required_outer_names=(
+            "source",
+            "event_message_id",
+            "_loop_for_step",
+            "_run_still_current",
+        ),
+        required_callback_args=(),
     )
 
 
@@ -152,6 +184,20 @@ def remove_patch(content: str) -> str:
         _render_thinking_delta_hook_block,
         "thinking delta patch markers",
     )
+    content = _remove_simple_owned_patch(
+        content,
+        STATUS_CALLBACK_PATCH_BEGIN,
+        STATUS_CALLBACK_PATCH_END,
+        _render_status_callback_hook_block,
+        "status callback patch markers",
+    )
+    content = _remove_simple_owned_patch(
+        content,
+        NOTIFY_PATCH_BEGIN,
+        NOTIFY_PATCH_END,
+        _render_notify_hook_block,
+        "notify patch markers",
+    )
     content = _remove_complete_patch(content)
     owned_block = _find_owned_block(content)
     if owned_block is None:
@@ -190,6 +236,8 @@ def remove_patch_lenient(content: str) -> str:
         (TOOL_PATCH_BEGIN, TOOL_PATCH_END),
         (ANSWER_DELTA_PATCH_BEGIN, ANSWER_DELTA_PATCH_END),
         (THINKING_DELTA_PATCH_BEGIN, THINKING_DELTA_PATCH_END),
+        (STATUS_CALLBACK_PATCH_BEGIN, STATUS_CALLBACK_PATCH_END),
+        (NOTIFY_PATCH_BEGIN, NOTIFY_PATCH_END),
     ):
         owned_block = _find_simple_marker_block(
             content,
@@ -958,6 +1006,57 @@ def _render_cron_hook_block(indent: str, newline: str):
         f"{indent}except Exception:{newline}",
         f"{inner_indent}pass{newline}",
         f"{indent}{CRON_PATCH_END}{newline}",
+    ]
+
+
+def _render_status_callback_hook_block(indent: str, newline: str):
+    inner_indent = _child_indent(indent)
+    deeper_indent = _child_indent(inner_indent)
+    return [
+        f"{indent}{STATUS_CALLBACK_PATCH_BEGIN}{newline}",
+        f"{indent}if _run_still_current() and event_type == \"warn\":{newline}",
+        f"{inner_indent}try:{newline}",
+        (
+            f"{deeper_indent}from hermes_feishu_card.hook_runtime "
+            f"import emit_from_hermes_locals_threadsafe as _hfc_emit_threadsafe{newline}"
+        ),
+        f"{deeper_indent}if _hfc_emit_threadsafe({{{newline}",
+        f"{deeper_indent}    **locals(),{newline}",
+        f"{deeper_indent}    \"source\": source,{newline}",
+        f"{deeper_indent}    \"message_id\": event_message_id,{newline}",
+        f"{deeper_indent}    \"_hfc_loop\": _loop_for_step,{newline}",
+        f"{deeper_indent}    \"text\": message,{newline}",
+        f"{deeper_indent}}}, event_name=\"status.warning\"):{newline}",
+        f"{deeper_indent}    return{newline}",
+        f"{inner_indent}except Exception:{newline}",
+        f"{deeper_indent}pass{newline}",
+        f"{indent}{STATUS_CALLBACK_PATCH_END}{newline}",
+    ]
+
+
+def _render_notify_hook_block(indent: str, newline: str):
+    inner_indent = _child_indent(indent)
+    deeper_indent = _child_indent(inner_indent)
+    return [
+        f"{indent}{NOTIFY_PATCH_BEGIN}{newline}",
+        f"{indent}try:{newline}",
+        (
+            f"{inner_indent}from hermes_feishu_card.hook_runtime "
+            f"import emit_from_hermes_locals_threadsafe as _hfc_emit_threadsafe{newline}"
+        ),
+        f"{inner_indent}if _run_still_current():{newline}",
+        f"{deeper_indent}_hfc_heartbeat_text = f\"⏳ Still working... ({{_elapsed_mins}} min elapsed{{_status_detail}})\"{newline}",
+        f"{deeper_indent}if _hfc_emit_threadsafe({{{newline}",
+        f"{deeper_indent}    **locals(),{newline}",
+        f"{deeper_indent}    \"source\": source,{newline}",
+        f"{deeper_indent}    \"message_id\": event_message_id,{newline}",
+        f"{deeper_indent}    \"_hfc_loop\": _loop_for_step,{newline}",
+        f"{deeper_indent}    \"text\": _hfc_heartbeat_text,{newline}",
+        f"{deeper_indent}}}, event_name=\"status.heartbeat\"):{newline}",
+        f"{deeper_indent}    return{newline}",
+        f"{indent}except Exception:{newline}",
+        f"{inner_indent}pass{newline}",
+        f"{indent}{NOTIFY_PATCH_END}{newline}",
     ]
 
 

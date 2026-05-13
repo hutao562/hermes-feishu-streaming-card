@@ -31,6 +31,8 @@ SUPPORTED_RUNTIME_EVENTS = {
     "tool.updated",
     "message.completed",
     "message.failed",
+    "status.heartbeat",
+    "status.warning",
 }
 
 
@@ -495,6 +497,16 @@ def _event_data(
                 value = _first_attr_string(local_vars.get("event"), (reply_key,))
             if value:
                 data[reply_key] = value
+        return data
+    if event_name == "status.heartbeat":
+        text = _first_string(local_vars, ("text", "message", "content")) or ""
+        data["text"] = text
+        return data
+    if event_name == "status.warning":
+        text = _first_string(local_vars, ("text", "message", "content")) or ""
+        level = _first_string(local_vars, ("level",)) or "warning"
+        data["text"] = text
+        data["level"] = level
         return data
     return {}
 

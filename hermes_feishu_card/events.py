@@ -11,6 +11,8 @@ SUPPORTED_EVENTS = {
     "answer.delta",
     "message.completed",
     "message.failed",
+    "status.heartbeat",
+    "status.warning",
 }
 
 

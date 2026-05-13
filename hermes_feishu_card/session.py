@@ -35,6 +35,8 @@ class CardSession:
     _tool_call_count: int = field(default=0)
     thinking_normalizer: StreamingTextNormalizer = field(default_factory=StreamingTextNormalizer)
     answer_normalizer: StreamingTextNormalizer = field(default_factory=StreamingTextNormalizer)
+    last_heartbeat: str = ""
+    warnings: list[str] = field(default_factory=list)
 
     @property
     def tool_count(self) -> int:
@@ -117,4 +119,12 @@ class CardSession:
             self.status = "failed"
             error = event.data.get("error")
             self.answer_text = error if isinstance(error, str) else "消息处理失败"
+        elif event.event == "status.heartbeat":
+            text = event.data.get("text")
+            if isinstance(text, str):
+                self.last_heartbeat = text
+        elif event.event == "status.warning":
+            text = event.data.get("text")
+            if isinstance(text, str) and text.strip():
+                self.warnings.append(text.strip())
         return True

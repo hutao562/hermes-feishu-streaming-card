@@ -42,6 +42,12 @@ def render_card(
                 "content": attachment_summary,
             }
         )
+    warning_block = _render_warnings(session)
+    if warning_block:
+        elements.append(warning_block)
+    heartbeat_block = _render_heartbeat(session)
+    if heartbeat_block:
+        elements.append(heartbeat_block)
     elements.extend(
         [
             {"tag": "hr", "element_id": "main_divider"},
@@ -196,3 +202,28 @@ def _format_scaled(value: int, factor: int, suffix: str) -> str:
     if scaled >= 100 or scaled.is_integer():
         return f"{int(round(scaled))}{suffix}"
     return f"{scaled:.1f}".rstrip("0").rstrip(".") + suffix
+
+
+def _render_warnings(session: CardSession) -> Dict[str, Any] | None:
+    if not session.warnings:
+        return None
+    lines = []
+    for warning in session.warnings[-5:]:
+        lines.append(f"⚠️ {warning}")
+    content = "\n".join(lines)
+    return {
+        "tag": "markdown",
+        "element_id": "warnings",
+        "content": content,
+    }
+
+
+def _render_heartbeat(session: CardSession) -> Dict[str, Any] | None:
+    if not session.last_heartbeat or session.status in {"completed", "failed"}:
+        return None
+    return {
+        "tag": "markdown",
+        "element_id": "heartbeat",
+        "content": f"<font color='grey'>{session.last_heartbeat}</font>",
+        "text_size": "x-small",
+    }
