@@ -423,7 +423,7 @@ def _find_callback_body_location(
     if run_agent is None:
         return None
     for node in ast.walk(run_agent):
-        if isinstance(node, ast.FunctionDef) and node.name == callback_name:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == callback_name:
             if not _has_required_callback_scope(
                 run_agent,
                 node,
