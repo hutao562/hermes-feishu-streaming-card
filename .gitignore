@@ -12,3 +12,6 @@ dist/
 build/
 .superpowers/
 .worktrees/
+config.yaml
+.env
+*.log

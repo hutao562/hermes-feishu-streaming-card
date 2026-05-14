@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.2.0.html).
 
+## V3.5.1 — 2026-05-15
+
+### Fixed
+- **修复 reply_to_message_id 提取逻辑**：防止在飞书话题场景中错误使用 thread_id 作为回复目标
+  - 分离 `thread_id` 和 `reply_to_message_id` 的提取逻辑
+  - `reply_to_message_id` 不再使用 `thread_id` 或 `root_id` 作为后备
+  - 优先级：`quote_message_id` > `reply_to_message_id` > `parent_id` > `upper_message_id`
+  - 解决了飞书 Reply API 报错 "Invalid ids" 导致卡片发送失败的问题
+  - 修复了工具调用时 tool_count 显示为 0 的问题（事件丢失导致）
+
 ## V3.5.0 — 2026-05-14
 
 ### Fixed
