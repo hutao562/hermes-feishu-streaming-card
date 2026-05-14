@@ -212,11 +212,23 @@ async def _apply_event_locked(request: web.Request, event: SidecarEvent) -> tupl
             request.app[SESSION_CARD_CONFIGS_KEY][_session_key(event)] = (
                 _resolve_session_card_config(request.app, route.bot_id, event)
             )
+            # 提取 thread_id 和 reply_to_message_id（如果存在），用于发送到正确的 Feishu thread
+            thread_id = None
+            reply_to_message_id = None
+            if isinstance(event.data, dict):
+                thread_id = event.data.get("thread_id")
+                if not isinstance(thread_id, str) or not thread_id.strip():
+                    thread_id = None
+                reply_to_message_id = event.data.get("reply_to_message_id")
+                if not isinstance(reply_to_message_id, str) or not reply_to_message_id.strip():
+                    reply_to_message_id = None
             message_id = await _send_card(
                 request,
                 event.chat_id,
                 _render_session_card(request, session),
                 route.bot_id,
+                thread_id=thread_id,
+                reply_to_message_id=reply_to_message_id,
             )
             if message_id is None:
                 sessions.pop(_session_key(event), None)
@@ -256,11 +268,23 @@ async def _apply_event_locked(request: web.Request, event: SidecarEvent) -> tupl
                 request.app[SESSION_CARD_CONFIGS_KEY][_session_key(event)] = (
                     _resolve_session_card_config(request.app, route.bot_id, event)
                 )
+                # 提取 thread_id 和 reply_to_message_id（如果存在），用于发送到正确的 Feishu thread
+                thread_id = None
+                reply_to_message_id = None
+                if isinstance(event.data, dict):
+                    thread_id = event.data.get("thread_id")
+                    if not isinstance(thread_id, str) or not thread_id.strip():
+                        thread_id = None
+                    reply_to_message_id = event.data.get("reply_to_message_id")
+                    if not isinstance(reply_to_message_id, str) or not reply_to_message_id.strip():
+                        reply_to_message_id = None
                 message_id = await _send_card(
                     request,
                     event.chat_id,
                     _render_session_card(request, session),
                     route.bot_id,
+                    thread_id=thread_id,
+                    reply_to_message_id=reply_to_message_id,
                 )
                 if message_id is None:
                     sessions.pop(_session_key(event), None)
@@ -445,12 +469,19 @@ def _card_config_for_client(
 
 
 async def _send_card(
-    request: web.Request, chat_id: str, card: dict[str, Any], bot_id: str | None
+    request: web.Request,
+    chat_id: str,
+    card: dict[str, Any],
+    bot_id: str | None,
+    thread_id: str | None = None,
+    reply_to_message_id: str | None = None,
 ) -> str | None:
     metrics: SidecarMetrics = request.app[METRICS_KEY]
     metrics.feishu_send_attempts += 1
     try:
-        message_id = await _client_for_bot(request.app, bot_id).send_card(chat_id, card)
+        message_id = await _client_for_bot(request.app, bot_id).send_card(
+            chat_id, card, thread_id=thread_id, reply_to_message_id=reply_to_message_id
+        )
     except Exception:
         metrics.feishu_send_failures += 1
         return None

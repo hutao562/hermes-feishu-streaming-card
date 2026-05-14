@@ -67,7 +67,30 @@ class FeishuClient:
             "content": json.dumps(card, ensure_ascii=False),
         }
 
-    async def send_card(self, chat_id: str, card: Dict[str, Any]) -> str:
+    async def send_card(
+        self,
+        chat_id: str,
+        card: Dict[str, Any],
+        thread_id: str | None = None,
+        reply_to_message_id: str | None = None,
+    ) -> str:
+        """发送卡片消息。
+
+        Args:
+            chat_id: 目标 chat_id
+            card: 卡片内容
+            thread_id: 如果提供，发送到指定的 thread（使用 thread_id 作为 receive_id）
+            reply_to_message_id: 如果提供，回复到指定消息（使用 reply API）
+        """
+        # 优先使用 reply_to_message_id（回复到话题）
+        if reply_to_message_id:
+            return await self.send_card_reply(reply_to_message_id, card, reply_in_thread=True)
+
+        # 其次使用 thread_id（发送新消息到话题）
+        if thread_id:
+            return await self.send_card_to_thread(thread_id, card)
+
+        # 普通发送
         token = await self._tenant_token()
         payload = self.build_message_payload(chat_id, card)
         body = await self._request_json(
@@ -80,6 +103,68 @@ class FeishuClient:
         data = body.get("data")
         if not isinstance(data, dict) or not isinstance(data.get("message_id"), str):
             raise FeishuAPIError("Feishu send message response missing message_id")
+        return data["message_id"]
+
+    async def send_card_reply(
+        self,
+        reply_to_message_id: str,
+        card: Dict[str, Any],
+        reply_in_thread: bool = True,
+    ) -> str:
+        """发送回复消息。
+
+        Args:
+            reply_to_message_id: 被回复的消息 ID
+            card: 卡片内容
+            reply_in_thread: 是否回复到 thread 中
+        """
+        token = await self._tenant_token()
+        payload = {
+            "msg_type": "interactive",
+            "content": json.dumps(card, ensure_ascii=False),
+        }
+        if reply_in_thread:
+            payload["reply_in_thread"] = True
+
+        body = await self._request_json(
+            "POST",
+            f"/im/v1/messages/{quote(reply_to_message_id, safe='')}/reply",
+            token=token,
+            json_body=payload,
+        )
+        data = body.get("data")
+        if not isinstance(data, dict) or not isinstance(data.get("message_id"), str):
+            raise FeishuAPIError("Feishu reply message response missing message_id")
+        return data["message_id"]
+
+    async def send_card_to_thread(
+        self,
+        thread_id: str,
+        card: Dict[str, Any],
+    ) -> str:
+        """发送新消息到 thread。
+
+        Args:
+            thread_id: thread ID
+            card: 卡片内容
+        """
+        token = await self._tenant_token()
+        payload = {
+            "receive_id": thread_id,
+            "msg_type": "interactive",
+            "content": json.dumps(card, ensure_ascii=False),
+        }
+
+        body = await self._request_json(
+            "POST",
+            "/im/v1/messages",
+            token=token,
+            params={"receive_id_type": "thread_id"},
+            json_body=payload,
+        )
+        data = body.get("data")
+        if not isinstance(data, dict) or not isinstance(data.get("message_id"), str):
+            raise FeishuAPIError("Feishu send thread message response missing message_id")
         return data["message_id"]
 
     async def update_card_message(self, message_id: str, card: Dict[str, Any]) -> None:

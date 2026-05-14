@@ -22,7 +22,7 @@ def test_thinking_accumulates_and_strips_tags():
     session = CardSession(conversation_id="chat-1", message_id="msg-1", chat_id="oc_abc")
     assert session.apply(event("thinking.delta", 1, {"text": "<think>先分析"}))
     assert session.apply(event("thinking.delta", 2, {"text": "</think>结束。"}))
-    assert session.thinking_text == "先分析结束。"
+    assert session.thinking_text == "结束。"
 
 
 def test_rejects_duplicate_and_stale_sequence():
@@ -136,12 +136,12 @@ def test_split_think_tags_do_not_leak_across_chunks():
     assert session.apply(event("thinking.delta", 1, {"text": "<thi"}))
     assert session.apply(event("thinking.delta", 2, {"text": "nk>先分析</thi"}))
     assert session.apply(event("thinking.delta", 3, {"text": "nk>结束"}))
-    assert session.thinking_text == "先分析结束"
+    assert session.thinking_text == "结束"
 
     assert session.apply(event("answer.delta", 4, {"text": "<thi"}))
     assert session.apply(event("answer.delta", 5, {"text": "nk>答案</thi"}))
     assert session.apply(event("answer.delta", 6, {"text": "nk>完成"}))
-    assert session.answer_text == "答案完成"
+    assert session.answer_text == "完成"
 
 
 def test_completed_state_rejects_later_mutations():

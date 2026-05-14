@@ -5,14 +5,14 @@ from hermes_feishu_card.text import (
 )
 
 
-def test_normalize_removes_think_tags():
+def test_normalize_removes_think_tags_and_content():
     raw = "<think>我在分析</think>\n最终不会出现标签"
-    assert normalize_stream_text(raw) == "我在分析\n最终不会出现标签"
+    assert normalize_stream_text(raw) == "\n最终不会出现标签"
 
 
-def test_normalize_removes_mixed_case_think_tags():
+def test_normalize_removes_mixed_case_think_tags_and_content():
     raw = "<THINK>我在分析</Think>\n最终不会出现标签"
-    assert normalize_stream_text(raw) == "我在分析\n最终不会出现标签"
+    assert normalize_stream_text(raw) == "\n最终不会出现标签"
 
 
 def test_normalize_handles_empty_input():
@@ -20,22 +20,22 @@ def test_normalize_handles_empty_input():
     assert normalize_stream_text(None) == ""
 
 
-def test_streaming_normalizer_removes_split_think_tags():
+def test_streaming_normalizer_removes_split_think_tags_and_content():
     normalizer = StreamingTextNormalizer()
 
     chunks = ["<thi", "nk>分片</thi", "nk>"]
     result = "".join(normalizer.feed(chunk) for chunk in chunks)
 
-    assert result == "分片"
+    assert result == ""
 
 
-def test_streaming_normalizer_removes_mixed_case_split_think_tags():
+def test_streaming_normalizer_removes_mixed_case_split_think_tags_and_content():
     normalizer = StreamingTextNormalizer()
 
     chunks = ["<TH", "INK>分片</Th", "ink>"]
     result = "".join(normalizer.feed(chunk) for chunk in chunks)
 
-    assert result == "分片"
+    assert result == ""
 
 
 def test_flushes_on_chinese_sentence_end():
@@ -66,20 +66,39 @@ def test_does_not_flush_tiny_fragment_too_early():
     assert not should_flush_text("半句话", elapsed_ms=100, max_wait_ms=800, max_chars=200)
 
 
-def test_normalize_removes_thinking_tags():
-    assert normalize_stream_text("<thinking>推理中</thinking>结果") == "推理中结果"
-    assert normalize_stream_text("<THINKING>推理</THINKING>") == "推理"
+def test_normalize_removes_thinking_tags_and_content():
+    assert normalize_stream_text("<thinking>推理中</thinking>结果") == "结果"
+    assert normalize_stream_text("<THINKING>推理</THINKING>") == ""
 
 
 def test_streaming_normalizer_handles_thinking_split_across_chunks():
     normalizer = StreamingTextNormalizer()
     assert normalizer.feed("hello<think") == "hello"
-    assert normalizer.feed("ing>world") == "world"
+    assert normalizer.feed("ing>world") == ""
 
 
 def test_normalize_does_not_remove_plain_think_word():
     assert normalize_stream_text("I think so") == "I think so"
     assert normalize_stream_text("I am thinking") == "I am thinking"
+
+
+def test_streaming_normalizer_preserves_text_outside_think_tags():
+    normalizer = StreamingTextNormalizer()
+    assert normalizer.feed("前缀<think>隐藏内容</think>后缀") == "前缀后缀"
+
+
+def test_streaming_normalizer_handles_multiple_think_tags():
+    normalizer = StreamingTextNormalizer()
+    chunks = ["A<think>B", "</think>C<think>D", "</think>E"]
+    result = "".join(normalizer.feed(chunk) for chunk in chunks)
+    assert result == "ACE"
+
+
+def test_streaming_normalizer_discards_unclosed_think_content():
+    normalizer = StreamingTextNormalizer()
+    assert normalizer.feed("<think>隐藏") == ""
+    assert normalizer.feed("更多隐藏") == ""
+    assert normalizer.feed("</think>可见") == "可见"
 
 
 # —— 表格统计 ————————————————————————————————

@@ -136,9 +136,14 @@ def render_preview_svg(cards: dict[str, dict[str, Any]]) -> str:
 
 def _card_parts(card: dict[str, Any]) -> dict[str, str]:
     elements = card["body"]["elements"]
+    title_full = card["header"]["title"]["content"]
+    if " · " in title_full:
+        title, subtitle = title_full.split(" · ", 1)
+    else:
+        title, subtitle = title_full, ""
     return {
-        "title": card["header"]["title"]["content"],
-        "subtitle": card["header"]["subtitle"]["content"],
+        "title": title,
+        "subtitle": subtitle,
         "main": elements[0]["content"],
         "tools": elements[2]["content"],
         "footer": elements[3]["content"],

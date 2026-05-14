@@ -19,7 +19,7 @@ DEFAULT_TITLE = "Hermes Agent"
 _SPINNER_FRAMES = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏")
 
 def _spinner_text(label: str = "生成中") -> str:
-    frame = _SPINNER_FRAMES[int(_time.time() * 8) % len(_SPINNER_FRAMES)]
+    frame = _SPINNER_FRAMES[int(_time.time() * 16) % len(_SPINNER_FRAMES)]
     return f"{frame} {label}"
 
 def render_card(
@@ -28,7 +28,10 @@ def render_card(
     title: str = DEFAULT_TITLE,
 ) -> Dict[str, Any]:
     status = _render_status(session)
-    main_text = normalize_stream_text(session.visible_main_text) or ("正在思考..." if session.status == "thinking" else "")
+    if session.status == "thinking":
+        main_text = "正在思考..."
+    else:
+        main_text = normalize_stream_text(session.visible_main_text) or ""
     tool_summary = _render_tool_summary(session)
     attachment_summary = _render_attachment_summary(session)
     footer = _render_footer(session, footer_fields)
@@ -63,8 +66,7 @@ def render_card(
         },
         "header": {
             "template": status["template"],
-            "title": {"tag": "plain_text", "content": header_title},
-            "subtitle": {"tag": "plain_text", "content": status["subtitle"]},
+            "title": {"tag": "plain_text", "content": f"{header_title} ｜ {status['subtitle']}"},
         },
         "body": {
             "elements": elements

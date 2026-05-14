@@ -1,6 +1,8 @@
 import json
+from unittest import mock
 
 import pytest
+import pytest_asyncio
 
 from hermes_feishu_card.feishu_client import FeishuClient, FeishuClientConfig
 
@@ -98,3 +100,147 @@ def test_build_message_payload_rejects_unserializable_card():
     client = FeishuClient(cfg)
     with pytest.raises(TypeError):
         client.build_message_payload("oc_abc", {"bad": object()})
+
+
+@pytest.mark.asyncio
+async def test_send_card_without_thread_id_uses_normal_api():
+    """测试无 thread_id 时使用正常的发送 API"""
+    cfg = FeishuClientConfig(app_id="cli_a", app_secret="sec")
+    client = FeishuClient(cfg)
+
+    with mock.patch.object(client, "_tenant_token", return_value="token_123"):
+        with mock.patch.object(client, "_request_json") as mock_request:
+            mock_request.return_value = {
+                "code": 0,
+                "data": {"message_id": "msg_normal_123"},
+            }
+            card = {"schema": "2.0", "header": {"title": "test"}}
+            message_id = await client.send_card("oc_chat_123", card)
+
+            assert message_id == "msg_normal_123"
+            # 验证调用的是正常的发送 API（不是 reply API）
+            mock_request.assert_called_once()
+            call_args = mock_request.call_args
+            assert call_args[0][0] == "POST"
+            assert call_args[0][1] == "/im/v1/messages"
+            # 验证参数中包含 receive_id_type
+            assert "params" in call_args[1]
+            assert call_args[1]["params"]["receive_id_type"] == "chat_id"
+
+
+@pytest.mark.asyncio
+async def test_send_card_with_thread_id_sends_to_thread():
+    """测试有 thread_id 时发送新消息到话题"""
+    cfg = FeishuClientConfig(app_id="cli_a", app_secret="sec")
+    client = FeishuClient(cfg)
+
+    with mock.patch.object(client, "_tenant_token", return_value="token_123"):
+        with mock.patch.object(client, "_request_json") as mock_request:
+            mock_request.return_value = {
+                "code": 0,
+                "data": {"message_id": "msg_thread_456"},
+            }
+            card = {"schema": "2.0", "header": {"title": "test"}}
+            thread_id = "omt_abc123"
+
+            message_id = await client.send_card("oc_chat_123", card, thread_id=thread_id)
+
+            assert message_id == "msg_thread_456"
+            # 验证调用的是发送到 thread 的 API
+            mock_request.assert_called_once()
+            call_args = mock_request.call_args
+            assert call_args[0][0] == "POST"
+            assert call_args[0][1] == "/im/v1/messages"
+            # 验证参数中包含 receive_id_type=thread_id
+            assert "params" in call_args[1]
+            assert call_args[1]["params"]["receive_id_type"] == "thread_id"
+            # 验证 request body 包含 receive_id (thread_id)
+            json_body = call_args[1]["json_body"]
+            assert json_body["receive_id"] == thread_id
+            assert json_body["msg_type"] == "interactive"
+            assert "content" in json_body
+
+
+@pytest.mark.asyncio
+async def test_send_card_reply_api_error_handling():
+    """测试 Reply API 错误处理"""
+    cfg = FeishuClientConfig(app_id="cli_a", app_secret="sec")
+    client = FeishuClient(cfg)
+
+    with mock.patch.object(client, "_tenant_token", return_value="token_123"):
+        with mock.patch.object(client, "_request_json") as mock_request:
+            # 模拟 API 返回错误（缺少 message_id）
+            mock_request.return_value = {
+                "code": 0,
+                "data": {},
+            }
+
+            card = {"schema": "2.0", "header": {"title": "test"}}
+            with pytest.raises(Exception, match="missing message_id"):
+                await client.send_card("oc_chat_123", card, thread_id="thread_123")
+
+
+@pytest.mark.asyncio
+async def test_send_card_reply_api_with_thread_root_id():
+    """测试 send_card_reply 直接调用"""
+    cfg = FeishuClientConfig(app_id="cli_a", app_secret="sec")
+    client = FeishuClient(cfg)
+
+    with mock.patch.object(client, "_tenant_token", return_value="token_abc"):
+        with mock.patch.object(client, "_request_json") as mock_request:
+            mock_request.return_value = {
+                "code": 0,
+                "data": {"message_id": "reply_msg_789"},
+            }
+            card = {"schema": "2.0", "body": {"elements": []}}
+
+            message_id = await client.send_card_reply("thread_root_om_xxx", card)
+
+            assert message_id == "reply_msg_789"
+            call_args = mock_request.call_args
+            assert call_args[0][1] == "/im/v1/messages/thread_root_om_xxx/reply"
+            json_body = call_args[1]["json_body"]
+            assert json_body["reply_in_thread"] is True
+
+
+@pytest.mark.asyncio
+async def test_send_card_thread_id_empty_string_not_used():
+    """测试空字符串 thread_id 不使用 Reply API"""
+    cfg = FeishuClientConfig(app_id="cli_a", app_secret="sec")
+    client = FeishuClient(cfg)
+
+    with mock.patch.object(client, "_tenant_token", return_value="token_123"):
+        with mock.patch.object(client, "_request_json") as mock_request:
+            mock_request.return_value = {
+                "code": 0,
+                "data": {"message_id": "msg_123"},
+            }
+            card = {"schema": "2.0", "header": {"title": "test"}}
+
+            # 传入空字符串 thread_id
+            await client.send_card("oc_chat_123", card, thread_id="")
+
+            # 应该使用正常 API，不是 Reply API
+            call_args = mock_request.call_args
+            assert call_args[0][1] == "/im/v1/messages"
+            assert "params" in call_args[1]
+
+
+@pytest.mark.asyncio
+async def test_send_card_thread_id_none_uses_normal_api():
+    """测试 None thread_id 使用正常发送 API"""
+    cfg = FeishuClientConfig(app_id="cli_a", app_secret="sec")
+    client = FeishuClient(cfg)
+
+    with mock.patch.object(client, "_tenant_token", return_value="token_123"):
+        with mock.patch.object(client, "_request_json") as mock_request:
+            mock_request.return_value = {
+                "code": 0,
+                "data": {"message_id": "msg_123"},
+            }
+            card = {"schema": "2.0", "header": {"title": "test"}}
+
+            await client.send_card("oc_chat_123", card, thread_id=None)
+
+            call_args = mock_request.call_args
+            assert call_args[0][1] == "/im/v1/messages"

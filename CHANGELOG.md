@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.2.0.html).
 
+## V3.5.0 — 2026-05-14
+
+### Fixed
+- **飞书子会话/话题路由**：修复了 Hermes 在飞书私聊话题（thread）中的回复卡片发送问题。
+  - 现在正确提取 `thread_id` 和 `reply_to_message_id` 从飞书消息对象
+  - 使用 Reply API（`/im/v1/messages/{message_id}/reply`）发送卡片到话题
+  - 支持三种发送模式：Reply API（有 reply_to_message_id）、发送到 thread（有 thread_id）、普通发送
+  - Session Key 保持使用 message_id，确保会话隔离正确
+
+### Changed
+- `hook_runtime.py`：提取 `thread_id`、`root_id`、`parent_id`、`reply_to_message_id`、`quote_message_id` 并存入 `event.data`
+- `server.py`：从 `event.data` 提取 thread 参数并传递给 FeishuClient
+- `feishu_client.py`：重构 `send_card()` 支持 thread 路由，新增 `send_card_reply()` 和 `send_card_to_thread()` 方法
+- 测试覆盖率：新增 15 个单元测试验证 thread 路由逻辑
+
+### Compatibility
+- 向后兼容：无 thread 参数时行为不变
+- 与 Hermes 0.13+ 的 gateway_run_013_plus hook 策略兼容
+
 ## V3.4.0 — 2026-05-10
 
 ### Added

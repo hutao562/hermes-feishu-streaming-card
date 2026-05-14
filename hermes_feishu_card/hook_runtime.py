@@ -307,6 +307,25 @@ def _build_event(
         or _first_attr_string(source_obj, ("conversation_id", "thread_id", "session_id"))
         or chat_id
     )
+
+    # 提取 thread_id（如果存在），用于发送到正确的 thread
+    # 注意：Hermes 飞书平台的消息对象可能使用 thread_id 或 root_id
+    # 优先级：thread_id > root_id（与 Hermes 平台逻辑保持一致）
+    raw_thread_id = (
+        _first_string(local_vars, ("thread_id", "root_id"))
+        or _first_attr_string(message_obj, ("thread_id", "root_id"))
+        or _first_attr_string(source_obj, ("thread_id", "root_id"))
+    )
+
+    # 提取 reply_to_message_id（用于 Reply API）
+    # 飞书 Reply API 的 URL 需要消息 ID（om_x_...），不是 thread_id（omt_...）
+    # 优先级：quote_message_id > parent_id > reply_to_message_id > reply_to > thread_id（作为后备）
+    raw_reply_to = (
+        _first_string(local_vars, ("quote_message_id", "parent_id", "reply_to_message_id", "reply_to"))
+        or _first_attr_string(message_obj, ("quote_message_id", "parent_id", "reply_to_message_id", "reply_to"))
+        or _first_attr_string(source_obj, ("quote_message_id", "parent_id", "reply_to_message_id", "reply_to"))
+    )
+
     created_at_value = local_vars.get("created_at")
     created_at = _created_at(created_at_value)
     created_at_lifecycle_token = _created_at_lifecycle_token(created_at_value)
@@ -356,6 +375,13 @@ def _build_event(
         if message_id is None:
             return None
     sequence = _peek_next_sequence(message_id) if preview else _next_sequence(message_id)
+    event_data = _event_data(event_name, local_vars, source_obj, message_obj)
+    # 将 thread_id 存入 event data
+    if raw_thread_id:
+        event_data["thread_id"] = raw_thread_id
+    # 将 reply_to_message_id 存入 event data（用于 Reply API）
+    if raw_reply_to:
+        event_data["reply_to_message_id"] = raw_reply_to
     payload = {
         "schema_version": "1",
         "event": event_name,
@@ -365,7 +391,7 @@ def _build_event(
         "platform": _platform_name(local_vars, source_obj),
         "sequence": sequence,
         "created_at": created_at,
-        "data": _event_data(event_name, local_vars, source_obj, message_obj),
+        "data": event_data,
     }
     if is_terminal_event:
         if not preview:

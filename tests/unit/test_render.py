@@ -16,10 +16,11 @@ def test_render_thinking_card_has_two_state_label_and_tools():
     session.apply(event)
     card = render_card(session)
     assert card["schema"] == "2.0"
-    assert card["header"]["title"]["content"] == "Hermes Agent"
-    assert card["header"]["subtitle"]["content"] == "思考中"
+    assert card["header"]["title"]["content"] == "Hermes Agent ｜ 思考中"
+    assert "subtitle" not in card["header"]
     content = str(card)
-    assert "正在分析。" in content
+    assert "正在思考..." in content
+    assert "正在分析。" not in content
     assert "工具调用 1 次" in content
 
 
@@ -28,7 +29,7 @@ def test_render_card_accepts_custom_header_title():
 
     card = render_card(session, title="研发助手")
 
-    assert card["header"]["title"]["content"] == "研发助手"
+    assert card["header"]["title"]["content"] == "研发助手 ｜ 思考中"
 
 
 def test_render_completed_card_replaces_thinking():
@@ -38,7 +39,7 @@ def test_render_completed_card_replaces_thinking():
     session.status = "completed"
     card = render_card(session)
     content = str(card)
-    assert card["header"]["subtitle"]["content"] == "已完成"
+    assert card["header"]["title"]["content"] == "Hermes Agent ｜ 已完成"
     assert "最终答案" in content
     assert "不会展示" not in content
 
@@ -124,20 +125,22 @@ def test_render_failed_card_shows_error_without_thinking():
     content = str(card)
     assert card["config"]["summary"]["content"] == "处理失败"
     assert card["header"]["template"] == "red"
-    assert card["header"]["subtitle"]["content"] == "处理失败"
+    assert card["header"]["title"]["content"] == "Hermes Agent ｜ 处理失败"
     assert "处理出错" in content
     assert "不会展示" not in content
     assert "已停止" in content
 
 
-def test_render_card_filters_think_tags_at_render_boundary():
+def test_render_thinking_card_shows_placeholder_instead_of_thinking_text():
     session = CardSession(conversation_id="chat-1", message_id="msg-1", chat_id="oc_abc")
     session.thinking_text = "<think>hidden</think>可见内容"
     card = render_card(session)
     content = str(card)
     assert "<think>" not in content
     assert "</think>" not in content
-    assert "hidden可见内容" in content
+    assert "hidden" not in content
+    assert "可见内容" not in content
+    assert "正在思考..." in content
 
 
 def test_render_completed_card_handles_empty_tokens_and_non_numeric_duration():

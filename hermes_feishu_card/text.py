@@ -2,33 +2,70 @@ from __future__ import annotations
 
 import re
 
-THINK_TAG_RE = re.compile(r"</?think>|</?thinking>", re.IGNORECASE)
+THINK_CONTENT_RE = re.compile(
+    r"<think\b[^>]*>.*?</think>|<thinking\b[^>]*>.*?</thinking>",
+    re.IGNORECASE | re.DOTALL,
+)
+THINK_TAG_RE = re.compile(r"</?think\b[^>]*>|</?thinking\b[^>]*>", re.IGNORECASE)
 SENTENCE_END_RE = re.compile(r"[。！？!?\.]$")
-THINK_TAGS = ("<think>", "</think>", "<thinking>", "</thinking>")
+THINK_START_RE = re.compile(r"<think\b[^>]*>|<thinking\b[^>]*>", re.IGNORECASE)
+THINK_END_RE = re.compile(r"</think>|</thinking>", re.IGNORECASE)
+THINK_START_PREFIXES = ("<think", "<thinking")
+THINK_END_PREFIXES = ("</think", "</thinking")
 
 
 def normalize_stream_text(text: str) -> str:
-    """移除模型 thinking 标签，保留用户可读内容。"""
-    return THINK_TAG_RE.sub("", text or "")
+    """移除模型 thinking 标签及其内部内容，保留用户可读内容。"""
+    text = text or ""
+    text = THINK_CONTENT_RE.sub("", text)
+    text = THINK_TAG_RE.sub("", text)
+    return text
 
 
 class StreamingTextNormalizer:
-    """Filter thinking tags that may be split across streaming chunks."""
+    """Filter thinking tags and their content that may be split across streaming chunks."""
 
     def __init__(self) -> None:
         self._pending = ""
+        self._in_think = False
 
     def feed(self, delta: str) -> str:
         text = self._pending + (delta or "")
-        safe_text, self._pending = self._split_safe_text(text)
-        return normalize_stream_text(safe_text)
+        self._pending = ""
+        result = []
+
+        while text:
+            if self._in_think:
+                match = THINK_END_RE.search(text)
+                if not match:
+                    _safe, self._pending = self._split_safe_text(
+                        text, THINK_END_PREFIXES
+                    )
+                    break
+
+                text = text[match.end() :]
+                self._in_think = False
+            else:
+                match = THINK_START_RE.search(text)
+                if not match:
+                    safe_text, self._pending = self._split_safe_text(
+                        text, THINK_START_PREFIXES
+                    )
+                    result.append(safe_text)
+                    break
+
+                result.append(text[: match.start()])
+                text = text[match.end() :]
+                self._in_think = True
+
+        return "".join(result)
 
     @staticmethod
-    def _split_safe_text(text: str) -> tuple[str, str]:
+    def _split_safe_text(text: str, tags: tuple[str, ...]) -> tuple[str, str]:
         lower_text = text.lower()
         pending_len = 0
 
-        for tag in THINK_TAGS:
+        for tag in tags:
             for prefix_len in range(1, len(tag)):
                 if lower_text.endswith(tag[:prefix_len]):
                     pending_len = max(pending_len, prefix_len)

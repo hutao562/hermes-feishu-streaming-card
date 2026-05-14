@@ -17,10 +17,10 @@ class FakeFeishuClient:
         self.update_error_message = "update unavailable"
         self.update_delay = 0.0
 
-    async def send_card(self, chat_id, card):
+    async def send_card(self, chat_id, card, thread_id=None, reply_to_message_id=None):
         if self.fail_send:
             raise RuntimeError("send unavailable")
-        self.sent.append((chat_id, card))
+        self.sent.append((chat_id, card, thread_id, reply_to_message_id))
         return f"feishu-message-{len(self.sent)}"
 
     async def update_card_message(self, message_id, card):
@@ -319,7 +319,7 @@ async def test_card_config_customizes_header_title():
         await test_client.close()
 
     assert response.status == 200
-    assert feishu_client.sent[0][1]["header"]["title"]["content"] == "研发助手"
+    assert feishu_client.sent[0][1]["header"]["title"]["content"] == "研发助手 ｜ 思考中"
 
 
 async def test_invalid_event_returns_400_json(client):
@@ -447,7 +447,7 @@ async def test_replayed_started_with_higher_sequence_does_not_block_later_delta(
     assert await thinking.json() == {"ok": True, "applied": True}
     assert len(feishu_client.sent) == 1
     assert len(feishu_client.updated) == 1
-    assert "后续增量" in str(feishu_client.updated[0][1])
+    assert "正在思考..." in str(feishu_client.updated[0][1])
 
 
 async def test_delta_after_completed_does_not_update_again(client):
@@ -556,7 +556,7 @@ async def test_streaming_deltas_are_throttled_but_terminal_event_updates(client)
 
     assert len(feishu_client.sent) == 1
     assert len(feishu_client.updated) == 2
-    assert "第一段" in str(feishu_client.updated[0][1])
+    assert "正在思考..." in str(feishu_client.updated[0][1])
     assert "第二段" not in str(feishu_client.updated[0][1])
     assert "最终答案" in str(feishu_client.updated[-1][1])
     health = await test_client.get("/health")
@@ -609,7 +609,7 @@ async def test_concurrent_streaming_deltas_share_message_update_window(client):
     assert await first_delta.json() == {"ok": True, "applied": True}
     assert await second_delta.json() == {"ok": True, "applied": True}
     assert len(feishu_client.updated) == 1
-    assert "第一段" in str(feishu_client.updated[0][1])
+    assert "正在思考..." in str(feishu_client.updated[0][1])
     health = await test_client.get("/health")
     metrics = (await health.json())["metrics"]
     assert metrics["events_received"] == 3
@@ -813,7 +813,7 @@ async def test_started_card_title_uses_bot_over_profile_and_global():
 
     assert response.status == 200
     sent_card = factory.clients["sales"].sent[0][1]
-    assert sent_card["header"]["title"]["content"] == "Sales Bot"
+    assert sent_card["header"]["title"]["content"] == "Sales Bot ｜ 思考中"
 
 
 @pytest.mark.parametrize("profile_id", ["bad:profile/path", "", "x" * 65])

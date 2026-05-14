@@ -336,7 +336,7 @@ def test_completed_event_strips_trailing_attachment_punctuation_and_deduplicates
         ("feishu", True, [{"kind": "image", "name": "chart.png"}], False),
     ],
 )
-def test_should_suppress_native_response_requires_feishu_delivery_without_attachments(
+def test_should_suppress_native_response_requires_feishu_delivery_with_attachments(
     platform, delivered, attachments, expected
 ):
     assert (
@@ -1357,3 +1357,121 @@ def test_build_event_profile_id_ignores_hermes_home_with_extra_segments(monkeypa
 
     assert payload["data"]["profile_id"] == "default"
     assert payload["data"]["profile_source"] == "fallback_default"
+
+
+def test_build_event_extracts_thread_id_from_locals():
+    """测试从 locals 中提取 thread_id"""
+    payload = hook_runtime.build_event(
+        "message.started",
+        {
+            "chat_id": "oc_abc",
+            "message_id": "msg_1",
+            "thread_id": "thread_123",
+        },
+    )
+
+    assert payload["data"]["thread_id"] == "thread_123"
+
+
+def test_build_event_extracts_thread_id_from_message_obj():
+    """测试从 message_obj 中提取 thread_id"""
+    local_vars = {
+        "chat_id": "oc_abc",
+        "message_id": "msg_1",
+        "text": "hello",
+        "message": type("MessageObj", (), {"thread_id": "thread_from_obj"})(),
+    }
+
+    payload = hook_runtime.build_event("answer.delta", local_vars)
+
+    assert payload["data"]["thread_id"] == "thread_from_obj"
+
+
+def test_build_event_extracts_thread_id_from_source_obj():
+    """测试从 source_obj 中提取 thread_id"""
+    local_vars = {
+        "chat_id": "oc_abc",
+        "message_id": "msg_1",
+        "source": type("SourceObj", (), {"thread_id": "thread_from_source"})(),
+    }
+
+    payload = hook_runtime.build_event("message.started", local_vars)
+
+    assert payload["data"]["thread_id"] == "thread_from_source"
+
+
+def test_build_event_extracts_root_id_as_thread_id():
+    """测试从 locals 中提取 root_id 作为 thread_id（与 Hermes 行为一致）"""
+    payload = hook_runtime.build_event(
+        "message.started",
+        {
+            "chat_id": "oc_abc",
+            "message_id": "msg_1",
+            "root_id": "root_abc",
+        },
+    )
+
+    assert payload["data"]["thread_id"] == "root_abc"
+
+
+def test_build_event_thread_id_priority_over_root_id():
+    """测试 thread_id 优先于 root_id（locals 中有 thread_id 和 root_id）"""
+    payload = hook_runtime.build_event(
+        "message.started",
+        {
+            "chat_id": "oc_abc",
+            "message_id": "msg_1",
+            "thread_id": "thread_priority",
+            "root_id": "root_secondary",
+        },
+    )
+
+    assert payload["data"]["thread_id"] == "thread_priority"
+
+
+def test_build_event_thread_id_priority_locals_over_obj():
+    """测试 thread_id 优先级：locals > message_obj > source_obj"""
+    local_vars = {
+        "chat_id": "oc_abc",
+        "message_id": "msg_1",
+        "thread_id": "thread_from_locals",
+        "message": type("MessageObj", (), {"thread_id": "thread_from_message"})(),
+        "source": type("SourceObj", (), {"thread_id": "thread_from_source"})(),
+    }
+
+    payload = hook_runtime.build_event("message.started", local_vars)
+
+    assert payload["data"]["thread_id"] == "thread_from_locals"
+
+
+def test_build_event_root_id_from_message_obj_when_no_thread_id():
+    """测试 message_obj 中的 root_id 作为后备"""
+    local_vars = {
+        "chat_id": "oc_abc",
+        "message_id": "msg_1",
+        "message": type("MessageObj", (), {"root_id": "root_from_message"})(),
+    }
+
+    payload = hook_runtime.build_event("message.started", local_vars)
+
+    assert payload["data"]["thread_id"] == "root_from_message"
+
+
+def test_build_event_no_thread_id_when_not_provided():
+    """测试未提供 thread_id 时不在 data 中"""
+    payload = hook_runtime.build_event(
+        "message.started",
+        {"chat_id": "oc_abc", "message_id": "msg_1"},
+    )
+
+    assert "thread_id" not in payload["data"]
+
+
+def test_build_event_thread_id_not_added_for_empty_string():
+    """测试空字符串 thread_id 不添加到 data"""
+    payload = hook_runtime.build_event(
+        "message.started",
+        {"chat_id": "oc_abc", "message_id": "msg_1", "thread_id": ""},
+    )
+
+    assert "thread_id" not in payload["data"]
