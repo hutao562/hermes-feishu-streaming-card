@@ -309,21 +309,23 @@ def _build_event(
     )
 
     # 提取 thread_id（如果存在），用于发送到正确的 thread
-    # 注意：Hermes 飞书平台的消息对象可能使用 thread_id 或 root_id
+    # 注意：thread_id 是 omt_... 格式，root_id 在某些情况下也可能是 thread_id
     # 优先级：thread_id > root_id（与 Hermes 平台逻辑保持一致）
+    # 但 root_id 不应用作 reply_to_message_id，因为它可能是消息 ID 或 thread ID
     raw_thread_id = (
         _first_string(local_vars, ("thread_id", "root_id"))
         or _first_attr_string(message_obj, ("thread_id", "root_id"))
         or _first_attr_string(source_obj, ("thread_id", "root_id"))
     )
 
-    # 提取 reply_to_message_id（用于 Reply API）
-    # 飞书 Reply API 的 URL 需要消息 ID（om_x_...），不是 thread_id（omt_...）
-    # 优先级：quote_message_id > parent_id > reply_to_message_id > reply_to > thread_id（作为后备）
+    # 提取回复目标消息 ID（用于 Reply API）
+    # 飞书 Reply API 需要消息 ID（om_x_...），不是 thread_id（omt_...）
+    # 优先级：quote_message_id > reply_to_message_id > parent_id > upper_message_id
+    # 注意：不要使用 thread_id 或 root_id 作为回复目标，因为它们可能是 thread ID！
     raw_reply_to = (
-        _first_string(local_vars, ("quote_message_id", "parent_id", "reply_to_message_id", "reply_to"))
-        or _first_attr_string(message_obj, ("quote_message_id", "parent_id", "reply_to_message_id", "reply_to"))
-        or _first_attr_string(source_obj, ("quote_message_id", "parent_id", "reply_to_message_id", "reply_to"))
+        _first_string(local_vars, ("quote_message_id", "reply_to_message_id", "parent_id", "upper_message_id"))
+        or _first_attr_string(message_obj, ("quote_message_id", "reply_to_message_id", "parent_id", "upper_message_id"))
+        or _first_attr_string(source_obj, ("quote_message_id", "reply_to_message_id", "parent_id", "upper_message_id"))
     )
 
     created_at_value = local_vars.get("created_at")
