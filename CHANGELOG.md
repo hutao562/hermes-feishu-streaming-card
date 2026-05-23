@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.2.0.html).
 
+<<<<<<< HEAD
 ## V3.5.1 — 2026-05-15
 
 ### Fixed
@@ -33,6 +34,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.2.0
 ### Compatibility
 - 向后兼容：无 thread 参数时行为不变
 - 与 Hermes 0.13+ 的 gateway_run_013_plus hook 策略兼容
+=======
+## V3.4.2 — 2026-05-21
+
+### Fixed
+- issue #31: Feishu card PATCH updates are now serialized per session so older card snapshots cannot land after newer content and cause thinking/answer text to flicker or roll back.
+- Concurrent Hermes callback events now allocate per-message sequence numbers under a lock, preventing duplicate sequence ids that could make valid `thinking.delta` / `answer.delta` chunks look stale.
+
+### Tests
+- Added regression coverage for out-of-order PATCH completion and concurrent runtime sequence allocation.
+
+## V3.4.1 — 2026-05-14
+
+### Fixed
+- issue #25: Hermes v2026.5.7 started hooks now treat `event_message_id` as an explicit message id, keeping `message.started` and `message.completed` on the same card lifecycle.
+- Fallback preview now reuses the active fallback cache, so `_preview_fallback_message_id` and `_create_active_fallback_message_id` do not drift when `created_at` is missing.
+
+### Tests
+- Added regression coverage for Hermes v2026.5.7-style started locals and untokened fallback preview/create lifecycle consistency.
+>>>>>>> main
 
 ## V3.4.0 — 2026-05-10
 

@@ -1,7 +1,9 @@
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 import json
 import math
 import threading
+import time
 from urllib import error
 
 import pytest
@@ -192,6 +194,19 @@ def test_build_event_uses_gateway_event_message_id_for_card_lifecycle():
     assert first_completed["message_id"] == "om_first"
     assert second_started["message_id"] == "om_second"
     assert second_completed["message_id"] == "om_second"
+
+
+def test_build_event_uses_event_message_id_from_hermes_run_agent_started_hook():
+    payload = hook_runtime.build_event(
+        "message.started",
+        {
+            "source": SourceObject(),
+            "event_message_id": "om_hermes_20260507",
+            "session_id": "session_source",
+        },
+    )
+
+    assert payload["message_id"] == "om_hermes_20260507"
 
 
 def test_build_event_explicit_started_keeps_active_fallback_identity():
@@ -506,6 +521,20 @@ def test_build_event_preview_does_not_advance_sequence_or_retire_fallback():
     assert completed is not None
     assert completed["message_id"] == started["message_id"]
     assert completed["sequence"] == 1
+
+
+def test_preview_fallback_matches_active_fallback_without_created_at():
+    key = ("conv_abc", "oc_abc")
+    cache_key = hook_runtime._new_fallback_cache_key(key, None)
+
+    active = hook_runtime._create_active_fallback_message_id(
+        key, cache_key, "conv_abc", "oc_abc", None
+    )
+    preview = hook_runtime._preview_fallback_message_id(
+        key, "conv_abc", "oc_abc", None
+    )
+
+    assert preview == active
 
 
 def test_attachment_guard_uses_preview_before_terminal_emit_retires_fallback():
@@ -843,6 +872,27 @@ def test_build_event_increments_sequence_per_message():
 
     assert first["sequence"] == 0
     assert second["sequence"] == 1
+
+
+def test_build_event_allocates_unique_sequences_across_threads(monkeypatch):
+    class SlowSequenceStore(dict):
+        def get(self, key, default=None):
+            value = super().get(key, default)
+            time.sleep(0.02)
+            return value
+
+    monkeypatch.setattr(hook_runtime, "_SEQUENCES", SlowSequenceStore())
+    local_vars = {"chat_id": "oc_abc", "message_id": "msg_seq", "text": "hi"}
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        payloads = list(
+            executor.map(
+                lambda _: hook_runtime.build_event("answer.delta", local_vars),
+                range(2),
+            )
+        )
+
+    assert sorted(payload["sequence"] for payload in payloads) == [0, 1]
 
 
 class SenderProbe:
