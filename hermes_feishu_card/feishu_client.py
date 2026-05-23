@@ -263,6 +263,7 @@ class FeishuClient:
         return " ".join(parts)
 
     def _redact_sensitive_text(self, text: str) -> str:
+        text = text.replace(self.config.app_secret, "[redacted-secret]")
         if self._tenant_access_token:
             text = text.replace(self._tenant_access_token, "[redacted-token]")
         return text

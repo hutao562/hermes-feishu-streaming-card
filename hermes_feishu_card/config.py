@@ -96,11 +96,13 @@ def _apply_env_overrides(config: dict[str, dict[str, Any]]) -> None:
     if isinstance(profiles, dict) and profiles:
         return
 
-    if "FEISHU_APP_ID" in os.environ:
-        config.setdefault("feishu", {})["app_id"] = os.environ["FEISHU_APP_ID"]
+    feishu = config.setdefault("feishu", {})
+    # 仅当 YAML 中未设置凭据（值为空）时才用环境变量覆盖
+    if "FEISHU_APP_ID" in os.environ and not feishu.get("app_id"):
+        feishu["app_id"] = os.environ["FEISHU_APP_ID"]
 
-    if "FEISHU_APP_SECRET" in os.environ:
-        config.setdefault("feishu", {})["app_secret"] = os.environ["FEISHU_APP_SECRET"]
+    if "FEISHU_APP_SECRET" in os.environ and not feishu.get("app_secret"):
+        feishu["app_secret"] = os.environ["FEISHU_APP_SECRET"]
 
 
 def _normalize_port(value: Any, name: str) -> int:
