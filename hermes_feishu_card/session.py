@@ -127,4 +127,7 @@ class CardSession:
             text = event.data.get("text")
             if isinstance(text, str) and text.strip():
                 self.warnings.append(text.strip())
+                # 长时间运行的会话可能积累大量警告，限制上限
+                if len(self.warnings) > 20:
+                    self.warnings = self.warnings[-20:]
         return True

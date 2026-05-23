@@ -54,6 +54,12 @@ class FeishuClient:
         self.config = config
         self._tenant_access_token: str | None = None
         self._tenant_access_token_expires_at = 0.0
+        self._session: aiohttp.ClientSession | None = None
+
+    async def close(self) -> None:
+        if self._session is not None:
+            await self._session.close()
+            self._session = None
 
     def build_message_payload(self, chat_id: str, card: Dict[str, Any]) -> Dict[str, str]:
         if not isinstance(chat_id, str) or not chat_id.strip():
@@ -219,21 +225,22 @@ class FeishuClient:
             headers["Authorization"] = f"Bearer {token}"
 
         timeout = aiohttp.ClientTimeout(total=float(self.config.timeout_seconds))
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession(timeout=timeout)
         try:
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.request(
-                    method,
-                    url,
-                    params=params,
-                    json=json_body,
-                    headers=headers,
-                ) as response:
-                    try:
-                        payload = await response.json(content_type=None)
-                    except (aiohttp.ContentTypeError, json.JSONDecodeError) as exc:
-                        raise FeishuAPIError(
-                            f"Feishu API returned non-json response: HTTP {response.status}"
-                        ) from exc
+            async with self._session.request(
+                method,
+                url,
+                params=params,
+                json=json_body,
+                headers=headers,
+            ) as response:
+                try:
+                    payload = await response.json(content_type=None)
+                except (aiohttp.ContentTypeError, json.JSONDecodeError) as exc:
+                    raise FeishuAPIError(
+                        f"Feishu API returned non-json response: HTTP {response.status}"
+                    ) from exc
         except aiohttp.ClientError as exc:
             raise FeishuAPIError(f"Feishu API request failed: {exc.__class__.__name__}") from exc
 
